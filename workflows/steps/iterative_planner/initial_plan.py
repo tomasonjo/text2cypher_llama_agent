@@ -1,7 +1,7 @@
 from typing import List
+from pydantic import BaseModel, Field
 
 from llama_index.core import ChatPromptTemplate
-from pydantic import BaseModel, Field
 
 
 class SubqueriesOutput(BaseModel):

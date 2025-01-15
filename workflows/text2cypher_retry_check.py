@@ -9,18 +9,18 @@ from llama_index.core.workflow import (
     step,
 )
 
-from app.workflows.shared import (
+from workflows.shared import (
     retrieve_fewshots,
     SseEvent,
     check_ok,
     default_llm,
+    default_graph_store,
     embed_model,
     fewshot_examples,
     fewshot_graph_store,
-    graph_store,
     store_fewshot_example,
 )
-from app.workflows.steps.naive_text2cypher import (
+from workflows.steps.naive_text2cypher import (
     correct_cypher_step,
     evaluate_database_output_step,
     generate_cypher_step,
@@ -55,9 +55,12 @@ class EvaluateEvent(Event):
 class NaiveText2CypherRetryCheckFlow(Workflow):
     max_retries = 2
 
-    def __init__(self, llm=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)  # Call the parent init
-        self.llm = llm or default_llm  # Add child-specific logic
+    def __init__(self, llm=None, graph_store=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.llm = llm or default_llm
+        self.graph_store = graph_store or default_graph_store
+
         # Fewshot graph store allows for self learning loop by storing new examples
         if fewshot_graph_store:
             self.few_shot_retriever = retrieve_fewshots
@@ -81,7 +84,10 @@ class NaiveText2CypherRetryCheckFlow(Workflow):
         question = ev.input
 
         cypher_query = await generate_cypher_step(
-            self.llm, question, self.few_shot_retriever
+            self.llm,
+            self.graph_store,
+            question,
+            self.few_shot_retriever,
         )
         # Return for the next step
         return ExecuteCypherEvent(question=question, cypher=cypher_query)
@@ -98,7 +104,7 @@ class NaiveText2CypherRetryCheckFlow(Workflow):
         )
         try:
             # Hard limit to 100 records
-            database_output = str(graph_store.structured_query(ev.cypher)[:100])
+            database_output = str(self.graph_store.structured_query(ev.cypher)[:100])
         except Exception as e:
             database_output = str(e)
             ctx.write_event_to_stream(
@@ -153,7 +159,13 @@ class NaiveText2CypherRetryCheckFlow(Workflow):
                 label="Cypher correction",
             )
         )
-        results = await correct_cypher_step(self.llm, ev.question, ev.cypher, ev.error)
+        results = await correct_cypher_step(
+            self.llm,
+            self.graph_store,
+            ev.question,
+            ev.cypher,
+            ev.error,
+        )
         return ExecuteCypherEvent(question=ev.question, cypher=results)
 
     @step

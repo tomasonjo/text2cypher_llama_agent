@@ -1,5 +1,5 @@
 import os
-from llama_index.embeddings.openai import OpenAIEmbedding
+
 from llama_index.llms.gemini import Gemini
 from llama_index.llms.openai import OpenAI
 from llama_index.llms.anthropic import Anthropic
@@ -101,7 +101,7 @@ class LlmUtils:
             self.llms.extend(
                 [
                     (
-                        "deepsek-v3",
+                        "deepseek-v3",
                         OpenAILike(
                             model="deepseek-chat",
                             api_base="https://api.deepseek.com/beta",

@@ -8,14 +8,14 @@ from llama_index.core.workflow import (
     Workflow,
     step,
 )
-from app.workflows.shared import (
+from workflows.shared import (
     SseEvent,
     default_llm,
     embed_model,
     fewshot_examples,
-    graph_store,
+    default_graph_store,
 )
-from app.workflows.steps.naive_text2cypher import (
+from workflows.steps.naive_text2cypher import (
     generate_cypher_step,
     get_naive_final_answer_prompt,
 )
@@ -33,9 +33,11 @@ class ExecuteCypherEvent(Event):
 
 
 class NaiveText2CypherFlow(Workflow):
-    def __init__(self, llm=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)  # Call the parent init
-        self.llm = llm or default_llm  # Add child-specific logic
+    def __init__(self, llm=None, graph_store=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.llm = llm or default_llm
+        self.graph_store = graph_store or default_graph_store
 
         # Add fewshot in-memory vector db
         few_shot_nodes = []
@@ -53,7 +55,10 @@ class NaiveText2CypherFlow(Workflow):
         question = ev.input
 
         cypher_query = await generate_cypher_step(
-            self.llm, question, self.few_shot_retriever
+            self.llm,
+            self.graph_store,
+            question,
+            self.few_shot_retriever,
         )
 
         ctx.write_event_to_stream(
@@ -72,7 +77,7 @@ class NaiveText2CypherFlow(Workflow):
     ) -> SummarizeEvent:
         try:
             # Hard limit to 100 records
-            database_output = str(graph_store.structured_query(ev.cypher)[:100])
+            database_output = str(self.graph_store.structured_query(ev.cypher)[:100])
         except Exception as e:
             database_output = str(e)
         ctx.write_event_to_stream(

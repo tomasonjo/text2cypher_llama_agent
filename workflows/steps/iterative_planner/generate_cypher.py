@@ -1,7 +1,5 @@
 from llama_index.core import ChatPromptTemplate
 
-from app.workflows.shared import graph_store
-
 GENERATE_SYSTEM_TEMPLATE = """Given an input question, convert it to a Cypher query. No pre-amble.
 Do not wrap the response in any backticks or anything else. Respond with a Cypher statement only!"""
 
@@ -18,22 +16,23 @@ User input: {question}
 Cypher query:"""
 
 
-async def generate_cypher_step(llm, subquery, fewshot_retriever):
-    # Remove multilabeled nodes
+async def generate_cypher_step(llm, graph_store, subquery, fewshot_retriever):
+    fewshot_examples = [el.text for el in fewshot_retriever.retrieve(subquery)]
+
     schema = graph_store.get_schema_str(exclude_types=["Actor", "Director"])
-    try:
-        fewshot_examples = [el.text for el in fewshot_retriever.retrieve(subquery)] # LLamaIndex vector store
-    except:
-        fewshot_examples = [str(el) for el in fewshot_retriever(subquery)] # My custom fewshot implementation for auto-learning
+
     generate_cypher_msgs = [
         ("system", GENERATE_SYSTEM_TEMPLATE),
         ("user", GENERATE_USER_TEMPLATE),
     ]
+
     text2cypher_prompt = ChatPromptTemplate.from_messages(generate_cypher_msgs)
 
     response = await llm.achat(
         text2cypher_prompt.format_messages(
-            question=subquery, schema=schema, fewshot_examples=fewshot_examples
+            question=subquery,
+            schema=schema,
+            fewshot_examples=fewshot_examples,
         )
     )
 

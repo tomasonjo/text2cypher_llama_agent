@@ -1,7 +1,7 @@
 from typing import List, Optional
+from pydantic import BaseModel, Field
 
 from llama_index.core import ChatPromptTemplate
-from pydantic import BaseModel, Field
 
 INFORMATION_CHECK_SYSTEM_TEMPLATE = """You are an expert assistant that evaluates whether a set of subqueries, their results, any existing condensed information, and the current query plan provide enough details to answer a given question. Your task is to:
 

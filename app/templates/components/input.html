@@ -30,9 +30,18 @@
     return element;
   }
 
+
+
   document.addEventListener("DOMContentLoaded", () => {
     const form = document.getElementById("input");
     const outputDiv = document.getElementById("output");
+
+    function scrollToBottom() {
+      outputDiv.parentElement.scrollTo(
+        0,
+        outputDiv.parentElement.scrollHeight
+      );
+    }
 
     function submitForm(event) {
       event.preventDefault();
@@ -53,6 +62,7 @@
 
       outputDiv.append(userMessage);
       outputDiv.append(loader);
+      scrollToBottom();
 
       const sse = new SSE("/workflow/", {
         method: 'POST',
@@ -91,10 +101,7 @@
         lastEventLabel = data.label;
 
         // scroll to bottom on every chunk response
-        outputDiv.parentElement.scrollTo(
-          0,
-          outputDiv.parentElement.scrollHeight
-        );
+        scrollToBottom()
       });
     }
 

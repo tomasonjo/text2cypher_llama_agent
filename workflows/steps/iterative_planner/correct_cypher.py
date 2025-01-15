@@ -1,7 +1,5 @@
 from llama_index.core import ChatPromptTemplate
 
-from app.workflows.shared import graph_store
-
 CORRECT_CYPHER_SYSTEM_TEMPLATE = """You are a Cypher expert reviewing a statement written by a junior developer.
 You need to correct the Cypher statement based on the provided errors. No pre-amble."
 Do not wrap the response in any backticks or anything else. Respond with a Cypher statement only!"""
@@ -29,7 +27,7 @@ The errors are:
 Corrected Cypher statement: """
 
 
-async def correct_cypher_step(llm, subquery, cypher, errors):
+async def correct_cypher_step(llm, graph_store, subquery, cypher, errors):
     schema = graph_store.get_schema_str(exclude_types=["Actor", "Director"])
 
     correct_cypher_messages = [

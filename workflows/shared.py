@@ -19,9 +19,10 @@ class SseEvent(Event):
 
 
 default_llm = OpenAI(model="gpt-4o-2024-11-20", temperature=0)
-
 embed_model = OpenAIEmbedding(model="text-embedding-3-small")
-graph_store = Neo4jPropertyGraphStore(
+
+
+default_graph_store = Neo4jPropertyGraphStore(
     username=os.getenv("NEO4J_USERNAME"),
     password=os.getenv("NEO4J_PASSWORD"),
     database=os.getenv("NEO4J_DATABASE"),
@@ -65,7 +66,7 @@ def store_fewshot_example(question, cypher, llm):
     # Check if already exists
     already_exists = fewshot_graph_store.structured_query(
         "MATCH (f:Fewshot {id: $question + $llm}) RETURN True",
-        param_map={"question": question, 'llm':llm},
+        param_map={"question": question, "llm": llm},
     )
     if already_exists:
         return
@@ -73,9 +74,9 @@ def store_fewshot_example(question, cypher, llm):
     embedding = embed_model.get_text_embedding(question)
     # Store response
     fewshot_graph_store.structured_query(
-        """MERGE (f:Fewshot {id: $question + $llm}) 
+        """MERGE (f:Fewshot {id: $question + $llm})
 SET f.cypher = $cypher, f.llm = $llm, f.created = datetime(), f.question = $question
-WITH f 
+WITH f
 CALL db.create.setNodeVectorProperty(f,'embedding', $embedding)""",
         param_map={
             "question": question,
@@ -106,7 +107,7 @@ def check_ok(text):
 # Cypher query corrector is experimental
 corrector_schema = [
     Schema(el["start"], el["type"], el["end"])
-    for el in graph_store.get_schema().get("relationships")
+    for el in default_graph_store.get_schema().get("relationships")
 ]
 cypher_query_corrector = CypherQueryCorrector(corrector_schema)
 

@@ -1,22 +1,21 @@
 import json
 
-from app.llms import LlmUtils
+from pydantic import BaseModel
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
 from app.settings import WORKFLOW_MAP
 from app.utils import llm_utils, run_workflow, urlx_for
 
 load_dotenv()
 
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["url_for"] = urlx_for
 
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
 @app.get("/", response_class=HTMLResponse)

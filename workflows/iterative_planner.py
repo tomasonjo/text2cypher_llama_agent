@@ -11,14 +11,14 @@ from llama_index.core.workflow import (
     step,
 )
 
-from app.workflows.shared import (
+from workflows.shared import (
     SseEvent,
     default_llm,
+    default_graph_store,
     embed_model,
     fewshot_examples,
-    graph_store,
 )
-from app.workflows.steps.iterative_planner import (
+from workflows.steps.iterative_planner import (
     correct_cypher_step,
     generate_cypher_step,
     get_final_answer_prompt,
@@ -70,9 +70,11 @@ class FinalAnswer(Event):
 
 
 class IterativePlanningFlow(Workflow):
-    def __init__(self, llm=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)  # Call the parent init
-        self.llm = llm or default_llm  # Add child-specific logic
+    def __init__(self, llm=None, graph_store=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.llm = llm or default_llm
+        self.graph_store = graph_store or default_graph_store
 
         # Add fewshot in-memory vector db
         few_shot_nodes = []
@@ -129,10 +131,15 @@ class IterativePlanningFlow(Workflow):
 
     @step(num_workers=4)
     async def generate_cypher_step(
-        self, ctx: Context, ev: GenerateCypher
+        self,
+        ctx: Context,
+        ev: GenerateCypher,
     ) -> ValidateCypher:
         generated_cypher = await generate_cypher_step(
-            self.llm, ev.subquery, self.few_shot_retriever
+            self.llm,
+            self.graph_store,
+            ev.subquery,
+            self.few_shot_retriever,
         )
         return ValidateCypher(
             subquery=ev.subquery, generated_cypher=generated_cypher, retries=ev.retries
@@ -142,7 +149,12 @@ class IterativePlanningFlow(Workflow):
     async def validate_cypher_step(
         self, ctx: Context, ev: ValidateCypher
     ) -> ExecuteCypher | CorrectCypher:
-        results = await validate_cypher_step(self.llm, ev.subquery, ev.generated_cypher)
+        results = await validate_cypher_step(
+            self.llm,
+            self.graph_store,
+            ev.subquery,
+            ev.generated_cypher,
+        )
         # if results["next_action"] == "end":  # DB value mapping
         #    return FinalAnswer(context=str(results["mapping_errors"]))
         if results["next_action"] == "execute_cypher":
@@ -173,7 +185,14 @@ class IterativePlanningFlow(Workflow):
                 label=f"Cypher correction: {ev.subquery}",
             )
         )
-        results = await correct_cypher_step(self.llm, ev.subquery, ev.cypher, ev.errors)
+        results = await correct_cypher_step(
+            self.llm,
+            self.graph_store,
+            ev.subquery,
+            ev.cypher,
+            ev.errors,
+        )
+
         return ValidateCypher(
             subquery=ev.subquery, generated_cypher=results, retries=ev.retries
         )
@@ -189,7 +208,7 @@ class IterativePlanningFlow(Workflow):
             )
         )
         try:
-            database_output = graph_store.structured_query(ev.validated_cypher)[
+            database_output = self.graph_store.structured_query(ev.validated_cypher)[
                 :100
             ]  # Hard limit of 100 results
         except Exception as e:  # Dividing by zero, etc... or timeout
