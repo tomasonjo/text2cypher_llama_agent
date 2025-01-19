@@ -73,9 +73,8 @@ input {
 
 select {
   font-family: mono;
-  width: 100%;
+  width: auto;
   height: 42px;
-  max-width: 300px;
   padding: var(--small-spacing);
   border: 1px solid var(--primary-color);
   background: white;
@@ -211,10 +210,6 @@ dialog {
   height: 100px;
   padding: var(--default-spacing);
   margin-bottom: var(--default-spacing);
-}
-
-.input select.select-llm {
-  width: 160px;
 }
 
 .input button[type="submit"] {
