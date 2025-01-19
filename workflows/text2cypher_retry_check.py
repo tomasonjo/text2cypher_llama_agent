@@ -8,18 +8,10 @@ from llama_index.core.workflow import (
     Workflow,
     step,
 )
-
-from workflows.shared import (
-    retrieve_fewshots,
-    SseEvent,
-    check_ok,
-    default_llm,
-    default_graph_store,
-    embed_model,
-    fewshot_examples,
-    fewshot_graph_store,
-    store_fewshot_example,
-)
+from workflows.shared.sse_event import SseEvent
+from workflows.shared.fewshot_examples import fewshot_examples
+from workflows.shared.fewshot_manager import FewshotManager
+from workflows.shared.utils import check_ok
 from workflows.steps.naive_text2cypher import (
     correct_cypher_step,
     evaluate_database_output_step,
@@ -55,15 +47,17 @@ class EvaluateEvent(Event):
 class NaiveText2CypherRetryCheckFlow(Workflow):
     max_retries = 2
 
-    def __init__(self, llm=None, graph_store=None, *args, **kwargs):
+    def __init__(self, llm, db, embed_model, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.llm = llm or default_llm
-        self.graph_store = graph_store or default_graph_store
+        self.llm = llm
+        self.graph_store = db["graph_store"]
+        self.embed_model = embed_model
+        self.fewshot_manager = FewshotManager()
 
         # Fewshot graph store allows for self learning loop by storing new examples
-        if fewshot_graph_store:
-            self.few_shot_retriever = retrieve_fewshots
+        if self.fewshot_manager.graph_store:
+            self.fewshot_retriever = self.fewshot_manager.retrieve_fewshots()
         else:
             # Add fewshot in-memory vector db
             few_shot_nodes = []
@@ -73,8 +67,10 @@ class NaiveText2CypherRetryCheckFlow(Workflow):
                         text=f"{{'query':{example['query']}, 'question': {example['question']}))"
                     )
                 )
-            few_shot_index = VectorStoreIndex(few_shot_nodes, embed_model=embed_model)
-            self.few_shot_retriever = few_shot_index.as_retriever(similarity_top_k=5)
+            few_shot_index = VectorStoreIndex(
+                few_shot_nodes, embed_model=self.embed_model
+            )
+            self.fewshot_retriever = few_shot_index.as_retriever(similarity_top_k=5)
 
     @step
     async def generate_cypher(self, ctx: Context, ev: StartEvent) -> ExecuteCypherEvent:
@@ -84,10 +80,10 @@ class NaiveText2CypherRetryCheckFlow(Workflow):
         question = ev.input
 
         cypher_query = await generate_cypher_step(
-            self.llm,
-            self.graph_store,
-            question,
-            self.few_shot_retriever,
+            llm=self.llm,
+            graph_store=self.graph_store,
+            subquery=question,
+            fewshot_retriever=self.fewshot_retriever,
         )
         # Return for the next step
         return ExecuteCypherEvent(question=question, cypher=cypher_query)
@@ -174,7 +170,12 @@ class NaiveText2CypherRetryCheckFlow(Workflow):
         # If retry was successful:
         if retries > 0 and check_ok(ev.evaluation):
             # print(f"Learned new example: {ev.question}, {ev.cypher}")
-            store_fewshot_example(ev.question, ev.cypher, self.llm.model)
+            self.fewshot_manager.store_fewshot_example(
+                question=ev.question,
+                cypher=ev.cypher,
+                llm=self.llm.model,
+                embed_model=self.embed_model,
+            )
 
         naive_final_answer_prompt = get_naive_final_answer_prompt()
         gen = await self.llm.astream_chat(

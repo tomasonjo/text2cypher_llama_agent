@@ -1,5 +1,3 @@
-from typing import List
-
 from llama_index.core import VectorStoreIndex
 from llama_index.core.schema import TextNode
 from llama_index.core.workflow import (
@@ -10,14 +8,8 @@ from llama_index.core.workflow import (
     Workflow,
     step,
 )
-
-from workflows.shared import (
-    SseEvent,
-    default_llm,
-    default_graph_store,
-    embed_model,
-    fewshot_examples,
-)
+from workflows.shared.sse_event import SseEvent
+from workflows.shared.fewshot_examples import fewshot_examples
 from workflows.steps.iterative_planner import (
     correct_cypher_step,
     generate_cypher_step,
@@ -27,6 +19,7 @@ from workflows.steps.iterative_planner import (
     initial_plan_step,
     validate_cypher_step,
 )
+from llama_index.graph_stores.neo4j import CypherQueryCorrector
 
 MAX_INFORMATION_CHECKS = 3
 MAX_CORRECT_STEPS = 1
@@ -50,7 +43,7 @@ class ValidateCypher(Event):
 class CorrectCypher(Event):
     cypher: str
     subquery: str
-    errors: List[str]
+    errors: list[str]
     retries: int
 
 
@@ -70,14 +63,16 @@ class FinalAnswer(Event):
 
 
 class IterativePlanningFlow(Workflow):
-    def __init__(self, llm=None, graph_store=None, *args, **kwargs):
+    def __init__(self, llm, db, embed_model, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.llm = llm or default_llm
-        self.graph_store = graph_store or default_graph_store
+        self.llm = llm
+        self.graph_store = db["graph_store"]
+        self.cypher_query_corrector = CypherQueryCorrector(db["corrector_schema"])
 
         # Add fewshot in-memory vector db
         few_shot_nodes = []
+
         for example in fewshot_examples:
             few_shot_nodes.append(
                 TextNode(
@@ -97,6 +92,7 @@ class IterativePlanningFlow(Workflow):
         await ctx.set(
             "subqueries_cypher_history", {}
         )  # History of which queries were executed
+
         # LLM call
         guardrails_output = await guardrails_step(self.llm, original_question)
         if guardrails_output.get("next_event") == "generate_final_answer":
@@ -141,6 +137,7 @@ class IterativePlanningFlow(Workflow):
             ev.subquery,
             self.few_shot_retriever,
         )
+
         return ValidateCypher(
             subquery=ev.subquery, generated_cypher=generated_cypher, retries=ev.retries
         )
@@ -150,10 +147,11 @@ class IterativePlanningFlow(Workflow):
         self, ctx: Context, ev: ValidateCypher
     ) -> ExecuteCypher | CorrectCypher:
         results = await validate_cypher_step(
-            self.llm,
-            self.graph_store,
-            ev.subquery,
-            ev.generated_cypher,
+            llm=self.llm,
+            graph_store=self.graph_store,
+            question=ev.subquery,
+            cypher=ev.generated_cypher,
+            cypher_query_corrector=self.cypher_query_corrector,
         )
         # if results["next_action"] == "end":  # DB value mapping
         #    return FinalAnswer(context=str(results["mapping_errors"]))
@@ -185,6 +183,7 @@ class IterativePlanningFlow(Workflow):
                 label=f"Cypher correction: {ev.subquery}",
             )
         )
+
         results = await correct_cypher_step(
             self.llm,
             self.graph_store,
@@ -207,6 +206,7 @@ class IterativePlanningFlow(Workflow):
                 label=f"Cypher Execution: {ev.subquery}",
             )
         )
+
         try:
             database_output = self.graph_store.structured_query(ev.validated_cypher)[
                 :100
@@ -231,6 +231,7 @@ class IterativePlanningFlow(Workflow):
         result = ctx.collect_events(ev, [InformationCheck] * number_of_subqueries)
         if result is None:
             return None
+
         # Add executed cypher statements to global state
         subqueries_cypher_history = await ctx.get("subqueries_cypher_history")
         new_subqueries_cypher = {
@@ -240,6 +241,7 @@ class IterativePlanningFlow(Workflow):
             }
             for item in result
         }
+
         await ctx.set(
             "subqueries_cypher_history",
             {**subqueries_cypher_history, **new_subqueries_cypher},
@@ -250,12 +252,13 @@ class IterativePlanningFlow(Workflow):
         plan = await ctx.get("plan")
 
         # Do the information check
-
         data = await information_check_step(
             self.llm, result, original_question, dynamic_notebook, plan
         )
+
         # Get count of information checks done
         information_checks = await ctx.get("information_checks")
+
         # Go fetch additional information if needed
         if data.get("modified_plan") and information_checks < MAX_INFORMATION_CHECKS:
             ctx.write_event_to_stream(
@@ -288,6 +291,7 @@ class IterativePlanningFlow(Workflow):
                 context=ev.context, question=original_question
             )
         )
+
         final_answer = ""
         async for response in gen:
             final_answer += response.delta

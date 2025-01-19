@@ -11,6 +11,11 @@
       <option value="{{ key }}">{{ key }}</option>
       {% endfor %}
     </select>
+     <select name="database" class="select-database">
+      {% for key in databases %}
+      <option value="{{ key }}">{{ key|capitalize }} database</option>
+      {% endfor %}
+    </select>
     <select name="workflow">
       {% for key in workflows %}
       <option value="{{ key }}">{{ key|capitalize|replace('_', ' ') }}  workflow</option>
@@ -30,8 +35,6 @@
     return element;
   }
 
-
-
   document.addEventListener("DOMContentLoaded", () => {
     const form = document.getElementById("input");
     const outputDiv = document.getElementById("output");
@@ -49,6 +52,7 @@
       const formData = new FormData(form);
       const llm = formData.get("llm");
       const context = formData.get('context');
+      const database = formData.get("database");
 
       if(context.length === 0) {
         return
@@ -71,6 +75,7 @@
         },
         payload: JSON.stringify({
           "llm": llm,
+          "database": database,
           "workflow": formData.get('workflow'),
           "context": context,
         }),

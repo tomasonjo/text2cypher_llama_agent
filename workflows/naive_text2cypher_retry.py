@@ -8,14 +8,8 @@ from llama_index.core.workflow import (
     Workflow,
     step,
 )
-
-from workflows.shared import (
-    SseEvent,
-    default_llm,
-    default_graph_store,
-    embed_model,
-    fewshot_examples,
-)
+from workflows.shared.sse_event import SseEvent
+from workflows.shared.fewshot_examples import fewshot_examples
 from workflows.steps.naive_text2cypher import (
     correct_cypher_step,
     generate_cypher_step,
@@ -43,20 +37,20 @@ class CorrectCypherEvent(Event):
 class NaiveText2CypherRetryFlow(Workflow):
     max_retries = 1
 
-    def __init__(self, llm=None, graph_store=None, *args, **kwargs):
+    def __init__(self, llm, db, embed_model, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.llm = llm or default_llm
-        self.graph_store = graph_store or default_graph_store
+        self.llm = llm
+        self.graph_store = db["graph_store"]
 
         # Add fewshot in-memory vector db
         few_shot_nodes = []
         for example in fewshot_examples:
-            few_shot_nodes.append(
-                TextNode(
-                    text=f"{{'query':{example['query']}, 'question': {example['question']}))"
-                )
+            node = TextNode(
+                text=f"{{'query':{example['query']}, 'question': {example['question']}))"
             )
+            print(">>> node:", node)
+            few_shot_nodes.append(node)
         few_shot_index = VectorStoreIndex(few_shot_nodes, embed_model=embed_model)
         self.few_shot_retriever = few_shot_index.as_retriever(similarity_top_k=5)
 
@@ -83,9 +77,11 @@ class NaiveText2CypherRetryFlow(Workflow):
     ) -> SummarizeEvent | CorrectCypherEvent:
         # Get global var
         retries = await ctx.get("retries")
+
         ctx.write_event_to_stream(
             SseEvent(message=f"Executing Cypher: {ev.cypher}", label="Cypher Execution")
         )
+
         try:
             # Hard limit to 100 records
             database_output = str(self.graph_store.structured_query(ev.cypher)[:100])
@@ -97,11 +93,13 @@ class NaiveText2CypherRetryFlow(Workflow):
                 return CorrectCypherEvent(
                     question=ev.question, cypher=ev.cypher, error=database_output
                 )
+
         ctx.write_event_to_stream(
             SseEvent(
                 message=f"Database output: {database_output}", label="Database output"
             )
         )
+
         return SummarizeEvent(
             question=ev.question, cypher=ev.cypher, context=database_output
         )
@@ -111,22 +109,27 @@ class NaiveText2CypherRetryFlow(Workflow):
         self, ctx: Context, ev: CorrectCypherEvent
     ) -> ExecuteCypherEvent:
         results = await correct_cypher_step(
-            self.llm,
-            self.graph_store,
-            ev.question,
-            ev.cypher,
-            ev.error,
+            llm=self.llm,
+            graph_store=self.graph_store,
+            subquery=ev.question,
+            cypher=ev.cypher,
+            errors=ev.error,
         )
+
         return ExecuteCypherEvent(question=ev.question, cypher=results)
 
     @step
     async def summarize_answer(self, ctx: Context, ev: SummarizeEvent) -> StopEvent:
         naive_final_answer_prompt = get_naive_final_answer_prompt()
+
         gen = await self.llm.astream_chat(
             naive_final_answer_prompt.format_messages(
-                context=ev.context, question=ev.question, cypher_query=ev.cypher
+                context=ev.context,
+                question=ev.question,
+                cypher_query=ev.cypher,
             )
         )
+
         final_answer = ""
         async for response in gen:
             final_answer += response.delta

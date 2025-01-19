@@ -8,13 +8,8 @@ from llama_index.core.workflow import (
     Workflow,
     step,
 )
-from workflows.shared import (
-    SseEvent,
-    default_llm,
-    embed_model,
-    fewshot_examples,
-    default_graph_store,
-)
+from workflows.shared.sse_event import SseEvent
+from workflows.shared.fewshot_examples import fewshot_examples
 from workflows.steps.naive_text2cypher import (
     generate_cypher_step,
     get_naive_final_answer_prompt,
@@ -33,11 +28,11 @@ class ExecuteCypherEvent(Event):
 
 
 class NaiveText2CypherFlow(Workflow):
-    def __init__(self, llm=None, graph_store=None, *args, **kwargs):
+    def __init__(self, llm, db, embed_model, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.llm = llm or default_llm
-        self.graph_store = graph_store or default_graph_store
+        self.llm = llm
+        self.graph_store = db["graph_store"]
 
         # Add fewshot in-memory vector db
         few_shot_nodes = []
