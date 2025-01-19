@@ -11,11 +11,14 @@ from google.api_core import retry
 
 
 class ResourceManager:
+    llms = []
+    databases = {}
+    embed_model = None
 
     def __init__(self):
-        self.llms = []
-        self.databases = {}
-        self.embed_model = None
+        self.init_llms()
+        self.init_databases()
+        self.init_embed_model()
 
     def init_llms(self):
         print("> Initializing all llms. This may take some time...")

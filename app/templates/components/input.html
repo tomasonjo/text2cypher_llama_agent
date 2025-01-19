@@ -59,7 +59,7 @@
       }
 
       const userMessage = createDivElement("message user");
-      userMessage.innerHTML = `<span class="label">Workflow input [${llm}]:</span><br />`;
+      userMessage.innerHTML = `<span class="label">Workflow input [${llm}/${database}]:</span><br />`;
       userMessage.innerHTML += formData.get("context");
 
       const loader = createDivElement("loader", "");
@@ -91,7 +91,7 @@
           if (lastEventLabel !== data.label) {
             message = createDivElement();
             message.classList = "message step";
-            message.innerHTML = `<span class="label">${data.label} [${llm}]:</span><br />`;
+            message.innerHTML = `<span class="label">${data.label} [${llm}/${database}]:</span><br />`;
             outputDiv.insertBefore(message, loader);
           }
           message.innerHTML += data.message;
