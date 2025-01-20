@@ -8,9 +8,10 @@ from llama_index.core.workflow import (
     Workflow,
     step,
 )
+
+from workflows.shared.local_fewshot_manager import LocalFewshotManager
+from workflows.shared.neo4j_fewshot_manager import Neo4jFewshotManager
 from workflows.shared.sse_event import SseEvent
-from workflows.shared.fewshot_examples import fewshot_examples
-from workflows.shared.fewshot_manager import FewshotManager
 from workflows.shared.utils import check_ok
 from workflows.steps.naive_text2cypher import (
     correct_cypher_step,
@@ -49,28 +50,17 @@ class NaiveText2CypherRetryCheckFlow(Workflow):
 
     def __init__(self, llm, db, embed_model, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         self.llm = llm
         self.graph_store = db["graph_store"]
         self.embed_model = embed_model
-        self.fewshot_manager = FewshotManager()
+        self.db_name = db["name"]
 
         # Fewshot graph store allows for self learning loop by storing new examples
+        self.fewshot_manager = Neo4jFewshotManager()
         if self.fewshot_manager.graph_store:
-            self.fewshot_retriever = self.fewshot_manager.retrieve_fewshots()
+            self.fewshot_retriever = self.fewshot_manager.retrieve_fewshots
         else:
-            # Add fewshot in-memory vector db
-            few_shot_nodes = []
-            for example in fewshot_examples:
-                few_shot_nodes.append(
-                    TextNode(
-                        text=f"{{'query':{example['query']}, 'question': {example['question']}))"
-                    )
-                )
-            few_shot_index = VectorStoreIndex(
-                few_shot_nodes, embed_model=self.embed_model
-            )
-            self.fewshot_retriever = few_shot_index.as_retriever(similarity_top_k=5)
+            self.fewshot_retriever = LocalFewshotManager().retrieve_fewshots
 
     @step
     async def generate_cypher(self, ctx: Context, ev: StartEvent) -> ExecuteCypherEvent:
@@ -79,11 +69,15 @@ class NaiveText2CypherRetryCheckFlow(Workflow):
 
         question = ev.input
 
+        fewshot_examples = self.fewshot_retriever(
+            question, self.db_name, self.embed_model
+        )
+
         cypher_query = await generate_cypher_step(
             llm=self.llm,
             graph_store=self.graph_store,
             subquery=question,
-            fewshot_retriever=self.fewshot_retriever,
+            fewshot_examples=fewshot_examples,
         )
         # Return for the next step
         return ExecuteCypherEvent(question=question, cypher=cypher_query)
@@ -175,6 +169,7 @@ class NaiveText2CypherRetryCheckFlow(Workflow):
                 cypher=ev.cypher,
                 llm=self.llm.model,
                 embed_model=self.embed_model,
+                database=self.db_name,
             )
 
         naive_final_answer_prompt = get_naive_final_answer_prompt()

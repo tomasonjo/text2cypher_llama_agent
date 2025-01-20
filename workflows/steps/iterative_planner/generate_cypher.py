@@ -16,9 +16,7 @@ User input: {question}
 Cypher query:"""
 
 
-async def generate_cypher_step(llm, graph_store, subquery, fewshot_retriever):
-    fewshot_examples = [el.text for el in fewshot_retriever.retrieve(subquery)]
-
+async def generate_cypher_step(llm, graph_store, subquery, fewshot_examples):
     schema = graph_store.get_schema_str(exclude_types=["Actor", "Director"])
 
     generate_cypher_msgs = [

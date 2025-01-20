@@ -1,13 +1,13 @@
 import os
 
-from llama_index.llms.gemini import Gemini
-from llama_index.llms.openai import OpenAI
-from llama_index.llms.anthropic import Anthropic
-from llama_index.llms.mistralai import MistralAI
-from llama_index.llms.openai_like import OpenAILike
+from google.api_core import retry
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.graph_stores.neo4j import Neo4jPropertyGraphStore, Schema
-from google.api_core import retry
+from llama_index.llms.anthropic import Anthropic
+from llama_index.llms.gemini import Gemini
+from llama_index.llms.mistralai import MistralAI
+from llama_index.llms.openai import OpenAI
+from llama_index.llms.openai_like import OpenAILike
 
 
 class ResourceManager:
@@ -142,6 +142,7 @@ class ResourceManager:
                     self.databases[db] = {
                         "graph_store": graph_store,
                         "corrector_schema": corrector_schema,
+                        "name": db,
                     }
                 except Exception as ex:
                     print(ex)

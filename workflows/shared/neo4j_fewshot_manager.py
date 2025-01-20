@@ -1,8 +1,9 @@
 import os
+
 from llama_index.graph_stores.neo4j import Neo4jPropertyGraphStore
 
 
-class FewshotManager:
+class Neo4jFewshotManager:
     graph_store = None
 
     def __init__(self):
@@ -16,21 +17,22 @@ class FewshotManager:
                 timeout=30,
             )
 
-    def retrieve_fewshots(self, question, embed_model):
+    def retrieve_fewshots(self, question, database, embed_model):
         if not self.graph_store:
             return
 
         embedding = embed_model.get_text_embedding(question)
         examples = self.graph_store.structured_query(
             """MATCH (f:Fewshot)
+WHERE f.database = $database
 WITH f, vector.similarity.cosine(f.embedding, $embedding) AS score
 ORDER BY score DESC LIMIT 7
 RETURN f.question AS question, f.cypher AS cypher""",
-            param_map={"embedding": embedding},
+            param_map={"embedding": embedding, "database": database},
         )
         return examples
 
-    def store_fewshot_example(self, question, cypher, llm, embed_model):
+    def store_fewshot_example(self, question, database, cypher, llm, embed_model):
         if not self.graph_store:
             return
 
@@ -48,13 +50,14 @@ RETURN f.question AS question, f.cypher AS cypher""",
         # Store response
         self.graph_store.structured_query(
             """MERGE (f:Fewshot {id: $question + $llm})
-SET f.cypher = $cypher, f.llm = $llm, f.created = datetime(), f.question = $question
+SET f.cypher = $cypher, f.llm = $llm, f.created = datetime(), f.question = $question, f.database = $database
 WITH f
 CALL db.create.setNodeVectorProperty(f,'embedding', $embedding)""",
             param_map={
                 "question": question,
                 "cypher": cypher,
                 "embedding": embedding,
+                "database": database,
                 "llm": llm,
             },
         )

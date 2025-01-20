@@ -1,7 +1,7 @@
 from typing import Literal
-from pydantic import BaseModel, Field
 
 from llama_index.core import ChatPromptTemplate
+from pydantic import BaseModel, Field
 
 
 class Guardrail(BaseModel):

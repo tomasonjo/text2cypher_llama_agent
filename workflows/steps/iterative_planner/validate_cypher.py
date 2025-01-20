@@ -1,8 +1,8 @@
 from typing import List, Optional
-from pydantic import BaseModel, Field
 
 from llama_index.core import ChatPromptTemplate
 from neo4j.exceptions import CypherSyntaxError
+from pydantic import BaseModel, Field
 
 VALIDATE_CYPHER_SYSTEM_TEMPLATE = """You are a specialized parser focused on analyzing Cypher query statements to extract node property filters. Your task is to identify and extract properties used in WHERE clauses and pattern matching conditions, but only when they contain explicit literal values.
 

@@ -7,5 +7,5 @@ WORKFLOW_MAP = {
     "text2cypher_with_1_retry_and_output_check": NaiveText2CypherRetryCheckFlow,
     "naive_text2cypher": NaiveText2CypherFlow,
     "naive_text2cypher_with_1_retry": NaiveText2CypherRetryFlow,
-    "iterative_planning": IterativePlanningFlow,
+    # "iterative_planning": IterativePlanningFlow,
 }

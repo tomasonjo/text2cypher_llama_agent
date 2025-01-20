@@ -11,3 +11,4 @@ wheels/
 *.csv
 *.numbers
 *.json
+benchmark

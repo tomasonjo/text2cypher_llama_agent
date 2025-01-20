@@ -8,8 +8,9 @@ from llama_index.core.workflow import (
     Workflow,
     step,
 )
+
+from workflows.shared.local_fewshot_manager import LocalFewshotManager
 from workflows.shared.sse_event import SseEvent
-from workflows.shared.fewshot_examples import fewshot_examples
 from workflows.steps.naive_text2cypher import (
     correct_cypher_step,
     generate_cypher_step,
@@ -42,17 +43,8 @@ class NaiveText2CypherRetryFlow(Workflow):
 
         self.llm = llm
         self.graph_store = db["graph_store"]
-
-        # Add fewshot in-memory vector db
-        few_shot_nodes = []
-        for example in fewshot_examples:
-            node = TextNode(
-                text=f"{{'query':{example['query']}, 'question': {example['question']}))"
-            )
-            print(">>> node:", node)
-            few_shot_nodes.append(node)
-        few_shot_index = VectorStoreIndex(few_shot_nodes, embed_model=embed_model)
-        self.few_shot_retriever = few_shot_index.as_retriever(similarity_top_k=5)
+        self.fewshot_retriever = LocalFewshotManager()
+        self.db_name = db["name"]
 
     @step
     async def generate_cypher(self, ctx: Context, ev: StartEvent) -> ExecuteCypherEvent:
@@ -61,11 +53,15 @@ class NaiveText2CypherRetryFlow(Workflow):
 
         question = ev.input
 
+        fewshot_examples = self.fewshot_retriever.get_fewshot_examples(
+            question, self.db_name
+        )
+
         cypher_query = await generate_cypher_step(
             self.llm,
             self.graph_store,
             question,
-            self.few_shot_retriever,
+            fewshot_examples,
         )
 
         # Return for the next step

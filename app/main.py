@@ -1,18 +1,17 @@
 import json
-
 from typing import Type
-from pydantic import BaseModel
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from llama_index.core.workflow import Workflow
+from pydantic import BaseModel
 
 from app.resource_manager import ResourceManager
 from app.settings import WORKFLOW_MAP
 from app.utils import urlx_for
-
 
 load_dotenv()
 

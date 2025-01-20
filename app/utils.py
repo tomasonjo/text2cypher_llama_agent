@@ -1,4 +1,5 @@
 from typing import Any
+
 from fastapi import Request
 from jinja2 import pass_context
 

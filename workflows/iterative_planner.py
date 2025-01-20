@@ -8,8 +8,10 @@ from llama_index.core.workflow import (
     Workflow,
     step,
 )
+from llama_index.graph_stores.neo4j import CypherQueryCorrector
+
+from workflows.shared.local_fewshot_manager import LocalFewshotManager
 from workflows.shared.sse_event import SseEvent
-from workflows.shared.fewshot_examples import fewshot_examples
 from workflows.steps.iterative_planner import (
     correct_cypher_step,
     generate_cypher_step,
@@ -19,7 +21,6 @@ from workflows.steps.iterative_planner import (
     initial_plan_step,
     validate_cypher_step,
 )
-from llama_index.graph_stores.neo4j import CypherQueryCorrector
 
 MAX_INFORMATION_CHECKS = 3
 MAX_CORRECT_STEPS = 1
@@ -69,18 +70,8 @@ class IterativePlanningFlow(Workflow):
         self.llm = llm
         self.graph_store = db["graph_store"]
         self.cypher_query_corrector = CypherQueryCorrector(db["corrector_schema"])
-
-        # Add fewshot in-memory vector db
-        few_shot_nodes = []
-
-        for example in fewshot_examples:
-            few_shot_nodes.append(
-                TextNode(
-                    text=f"{{'query':{example['query']}, 'question': {example['question']}))"
-                )
-            )
-        few_shot_index = VectorStoreIndex(few_shot_nodes, embed_model=embed_model)
-        self.few_shot_retriever = few_shot_index.as_retriever(similarity_top_k=5)
+        self.few_shot_retriever = LocalFewshotManager()
+        self.db_name = db["name"]
 
     @step
     async def start(self, ctx: Context, ev: StartEvent) -> InitialPlan | FinalAnswer:
@@ -131,11 +122,15 @@ class IterativePlanningFlow(Workflow):
         ctx: Context,
         ev: GenerateCypher,
     ) -> ValidateCypher:
+        fewshot_examples = self.fewshot_retriever.get_fewshot_examples(
+            ev.subquery, self.db_name
+        )
+
         generated_cypher = await generate_cypher_step(
             self.llm,
             self.graph_store,
             ev.subquery,
-            self.few_shot_retriever,
+            fewshot_examples,
         )
 
         return ValidateCypher(
