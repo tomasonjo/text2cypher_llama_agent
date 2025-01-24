@@ -40,5 +40,5 @@ class LocalFewshotManager:
 
         return self.data_dict.get(database, [])
 
-    def store_fewshot_example(self, question, database, cypher, llm, embed_model):
+    def store_fewshot_example(self, question, database, cypher, llm, embed_model, success = True):
         pass

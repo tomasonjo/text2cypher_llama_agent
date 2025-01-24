@@ -161,16 +161,28 @@ class NaiveText2CypherRetryCheckFlow(Workflow):
     @step
     async def summarize_answer(self, ctx: Context, ev: SummarizeEvent) -> StopEvent:
         retries = await ctx.get("retries")
-        # If retry was successful:
-        if retries > 0 and check_ok(ev.evaluation):
-            # print(f"Learned new example: {ev.question}, {ev.cypher}")
-            self.fewshot_manager.store_fewshot_example(
-                question=ev.question,
-                cypher=ev.cypher,
-                llm=self.llm.model,
-                embed_model=self.embed_model,
-                database=self.db_name,
-            )
+        
+        if retries > 0:
+            # If retry was successful:
+            if check_ok(ev.evaluation):
+                # print(f"Learned new example: {ev.question}, {ev.cypher}")
+                self.fewshot_manager.store_fewshot_example(
+                    question=ev.question,
+                    cypher=ev.cypher,
+                    llm=self.llm.model,
+                    embed_model=self.embed_model,
+                    database=self.db_name,
+                )
+            else:
+                self.fewshot_manager.store_fewshot_example(
+                    question=ev.question,
+                    cypher=ev.cypher,
+                    llm=self.llm.model,
+                    embed_model=self.embed_model,
+                    database=self.db_name,
+                    success=False
+                )
+
 
         naive_final_answer_prompt = get_naive_final_answer_prompt()
         gen = await self.llm.astream_chat(
